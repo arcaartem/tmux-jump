@@ -1,6 +1,23 @@
 require_relative '../scripts/jump_position'
 
 RSpec.describe JumpPosition do
+  describe '.tmux_at_least?' do
+    {
+      ['3.8-rc3', 3, 8] => true,
+      ['3.8-rc4', 3, 9] => false,
+      ['next-3.9', 3, 9] => true,
+      ['next-3.9', 4, 0] => false,
+      ['3.10', 3, 9] => true,
+      ['openbsd-7.4', 3, 4] => true,
+      ['openbsd-7.4', 3, 5] => false,
+      ['openbsd-6.8', 3, 2] => false
+    }.each do |(version, major, minor), expected|
+      it "is #{expected} for #{version} against #{major}.#{minor}" do
+        expect(described_class.tmux_at_least?(version, major, minor)).to eq expected
+      end
+    end
+  end
+
   describe '.cells' do
     {
       "e\u{301}" => { '3.1c' => 1 },

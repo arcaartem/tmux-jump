@@ -26,11 +26,8 @@ def start_pane(content, mode_keys)
   pane = tmux('display-message', '-p', '#{pane_id}').strip
   expect(tmux('display-message', '-p', '-t', pane, '#{pane_width}x#{pane_height}').strip)
     .to eq "#{PANE_WIDTH}x#{PANE_HEIGHT}"
-  tmux('respawn-pane', '-k', '-t', pane, "cat #{file.path}; sleep 300")
-  50.times do
-    break unless tmux('capture-pane', '-p', '-t', pane).strip.empty?
-    sleep 0.05
-  end
+  tmux('respawn-pane', '-k', '-t', pane, "cat #{file.path}; #{TMUX_BIN} wait-for -S ready; sleep 300")
+  tmux('wait-for', 'ready')
   pane
 end
 
@@ -83,7 +80,9 @@ CASES = [
   ['an accent and a target in the last column', "e\u0301#{'a' * (PANE_WIDTH - 3)} t\nfoo\n", 't'],
   ['mixed case', "The Tall tree\nTOP tip\n", 'tip'],
   ['a target in the top-left cell', "tango x\n", 'tango'],
-  ['the same char in the top-left cell', "tango\nfoo tz\n", 'tz'],
+  ['the same char in the top-left cell', "tango tz\n", 'tz'],
+  ['a target before later matches', "t1 t2 t3 t4\n", 't2'],
+  ['a target before a later match and the same char in the top-left cell', ";1 x;2 ;mark ;z\n", ';mark'],
   ['joined sequences and a decomposed accent target', "#{JOINED} e\u0301tok\n", "e\u0301tok"],
   ['joined sequences and a double-width target', "#{JOINED} \u4e2dx \u4e2dy\n", "\u4e2dy"],
   ['an accented target', "e\u0301a xe\u0301 e\u0301b\n", "e\u0301b"],
@@ -101,10 +100,10 @@ RSpec.describe "jump positioning (#{TMUX_BIN})" do
 
   %w[vi emacs].each do |mode_keys|
     context "with mode-keys #{mode_keys}" do
-      CASES.each do |description, content, marker, unsearchable_on|
+      CASES.each do |description, content, marker, skip_on|
         it "lands on the target with #{description}" do
-          if unsearchable_on && JumpPosition.tmux_at_least?(TMUX_VERSION, *unsearchable_on) &&
-             !JumpPosition.tmux_at_least?(TMUX_VERSION, unsearchable_on[0], unsearchable_on[1] + 1)
+          if skip_on && JumpPosition.tmux_at_least?(TMUX_VERSION, *skip_on) &&
+             !JumpPosition.tmux_at_least?(TMUX_VERSION, skip_on[0], skip_on[1] + 1)
             skip 'the joiner is captured after the target base character'
           end
           pane = start_pane(content, mode_keys)
@@ -114,16 +113,17 @@ RSpec.describe "jump positioning (#{TMUX_BIN})" do
       end
 
       {
-        'a scrolled view' => (1..60).map { |i| "t line #{i}\n" }.join,
+        'a scrolled view' => [(1..60).map { |i| "t line #{i}\n" }.join, /.*/],
         'a scrolled view with a blank top row and the cursor past the first column' =>
-          (1..30).map { |i| "t line #{i}\n\n" }.join + 'prompt> '
-      }.each do |description, content|
+          [(1..30).map { |i| "t line #{i}\n\n" }.join + 'prompt> ', /.*/],
+        'a scrolled view and a target inside the row' => [(1..60).map { |i| "t line #{i} tq#{i}\n" }.join, /tq\d+/]
+      }.each do |description, (content, marker_pattern)|
         it "keeps #{description} and lands on the target" do
           pane = start_pane(content, mode_keys)
           tmux('copy-mode', '-t', pane)
           tmux('send-keys', '-X', '-t', pane, '-N', '10', 'scroll-up')
           expect(scroll_position(pane)).to eq 10
-          marker = tmux('capture-pane', '-p', '-t', pane, '-S', '-10', '-E', '-3').lines[3].chomp
+          marker = tmux('capture-pane', '-p', '-t', pane, '-S', '-10', '-E', '-3').lines[3].chomp[marker_pattern]
           jump(pane, marker)
           expect(scroll_position(pane)).to eq 10
           expect(text_under_cursor(pane)).to start_with(marker)

@@ -36,7 +36,7 @@ PUNCTUATION = [',', '.', '-', '(', ')', '!', ':', '/', '"']
 def random_word(rng)
   case rng.rand(10)
   when 0 then Array.new(rng.rand(1..3)) { %W[中 文 字][rng.rand(3)] }.join + (rng.rand(2).zero? ? 'x' : '')
-  when 1 then (rng.rand(2).zero? ? "é" : "é") + WORDS.sample(random: rng)
+  when 1 then (rng.rand(2).zero? ? "e\u0301" : "\u00e9") + WORDS.sample(random: rng)
   when 2 then WORDS.sample(random: rng) + PUNCTUATION.sample(random: rng)
   else WORDS.sample(random: rng)
   end
